@@ -16,9 +16,10 @@ class BallDetectionConfig:
     model_path: str = os.path.join(BASE_DIR, "models", "yolov8n_ball.onnx")
     fallback_model_pt: str = "yolov8n.pt"  # Pre-trained fallback
     img_size: Tuple[int, int] = (416, 416)
-    conf_threshold: float = 0.45           # Tuned via optimizer for max F1
+    conf_threshold: float = 0.65           # High confidence threshold to eliminate background false positives
     nms_threshold: float = 0.40
     use_onnx: bool = True
+    enable_ball_detection: bool = True     # Master toggle for ball detection
     
     # Tracking parameters
     enable_tracking: bool = True

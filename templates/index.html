@@ -94,6 +94,13 @@
                             <span class="chip-number">01</span>
                             <h3>Ball Detector Architecture</h3>
                         </div>
+
+                        <div class="control-group">
+                            <div class="label-row">
+                                <label for="ball-toggle">Enable Ball Tracking Engine</label>
+                                <input type="checkbox" id="ball-toggle" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: var(--neon-cyan, #00f2fe);">
+                            </div>
+                        </div>
                         
                         <div class="control-group">
                             <label for="engine-select">Inference Engine Mode</label>
@@ -106,9 +113,9 @@
                         <div class="control-group">
                             <div class="label-row">
                                 <label for="conf-slider">Confidence Threshold (F1 Max)</label>
-                                <span id="conf-val" class="value-badge">0.45</span>
+                                <span id="conf-val" class="value-badge">0.65</span>
                             </div>
-                            <input type="range" id="conf-slider" min="0.05" max="0.95" step="0.05" value="0.45" class="slider">
+                            <input type="range" id="conf-slider" min="0.10" max="0.95" step="0.05" value="0.65" class="slider">
                         </div>
                     </div>
 

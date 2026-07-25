@@ -29,7 +29,7 @@ class BallDetector:
     def __init__(
         self,
         model_path: str = "yolov8n.pt",
-        conf_thresh: float = 0.45,
+        conf_thresh: float = 0.65,
         iou_thresh: float = 0.40,
         img_size: Tuple[int, int] = (416, 416),
         use_onnx: bool = True

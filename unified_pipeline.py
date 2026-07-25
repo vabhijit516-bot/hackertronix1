@@ -157,31 +157,32 @@ class UnifiedVisionPipeline:
         # 2. Process Task 1: Ball Detection & Tracking (with Face Overlap Suppression)
         cached_boxes, cached_scores, cached_ids = [], [], []
         
-        if self.frame_count % self.t1_cfg.detect_interval == 0:
-            raw_boxes, raw_scores = self.ball_detector.detect(frame)
-            # Filter out any candidate ball box that lands on a face/head/neck region
-            boxes, scores = [], []
-            for b, s in zip(raw_boxes, raw_scores):
-                if not is_on_face(b, face_bboxes):
-                    boxes.append(b)
-                    scores.append(s)
+        if self.t1_cfg.enable_ball_detection:
+            if self.frame_count % self.t1_cfg.detect_interval == 0:
+                raw_boxes, raw_scores = self.ball_detector.detect(frame)
+                # Filter out any candidate ball box that lands on a face/head/neck region
+                boxes, scores = [], []
+                for b, s in zip(raw_boxes, raw_scores):
+                    if not is_on_face(b, face_bboxes):
+                        boxes.append(b)
+                        scores.append(s)
 
-            if self.t1_cfg.enable_tracking:
-                tracked_results = self.ball_tracker.update(boxes)
-                valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
-                cached_boxes = [b for b, trk_id in valid_tracked]
-                cached_ids = [trk_id for b, trk_id in valid_tracked]
-                cached_scores = scores if len(scores) == len(cached_boxes) else [0.9] * len(cached_boxes)
+                if self.t1_cfg.enable_tracking:
+                    tracked_results = self.ball_tracker.update(boxes)
+                    valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
+                    cached_boxes = [b for b, trk_id in valid_tracked]
+                    cached_ids = [trk_id for b, trk_id in valid_tracked]
+                    cached_scores = scores if len(scores) == len(cached_boxes) else [0.9] * len(cached_boxes)
+                else:
+                    cached_boxes, cached_scores = boxes, scores
+                    cached_ids = []
             else:
-                cached_boxes, cached_scores = boxes, scores
-                cached_ids = []
-        else:
-            if self.t1_cfg.enable_tracking and len(self.ball_tracker.trackers) > 0:
-                tracked_results = self.ball_tracker.step_interframe()
-                valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
-                cached_boxes = [b for b, trk_id in valid_tracked]
-                cached_ids = [trk_id for b, trk_id in valid_tracked]
-                cached_scores = [0.85] * len(cached_boxes)
+                if self.t1_cfg.enable_tracking and len(self.ball_tracker.trackers) > 0:
+                    tracked_results = self.ball_tracker.step_interframe()
+                    valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
+                    cached_boxes = [b for b, trk_id in valid_tracked]
+                    cached_ids = [trk_id for b, trk_id in valid_tracked]
+                    cached_scores = [0.85] * len(cached_boxes)
 
         # Draw ball detections if present
         if len(cached_boxes) > 0:

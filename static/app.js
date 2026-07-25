@@ -1,10 +1,17 @@
 // Unified Auto-Detect Web Dashboard Script
 document.addEventListener('DOMContentLoaded', () => {
     // Task 1 Controls Sync
+    const ballToggle = document.getElementById('ball-toggle');
     const engineSelect = document.getElementById('engine-select');
     const confSlider = document.getElementById('conf-slider');
     const confVal = document.getElementById('conf-val');
     const engineTag = document.getElementById('engine-tag');
+
+    if (ballToggle) {
+        ballToggle.addEventListener('change', (e) => {
+            updateConfig({ enable_ball_detection: e.target.checked });
+        });
+    }
 
     confSlider.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value).toFixed(2);

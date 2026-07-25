@@ -121,6 +121,13 @@ def update_config():
     """Unified API to adjust detector engine, threshold, focal length, or filter mode."""
     data = request.json or {}
 
+    if 'enable_ball_detection' in data:
+        enable_bd = bool(data['enable_ball_detection'])
+        pipeline.t1_cfg.enable_ball_detection = enable_bd
+        if not enable_bd:
+            pipeline.ball_tracker.trackers.clear()
+        telemetry_cache["enable_ball_detection"] = enable_bd
+
     if 'conf_thresh' in data:
         conf = float(data['conf_thresh'])
         pipeline.ball_detector.set_confidence_threshold(conf)
