@@ -104,9 +104,25 @@ class BallDetector:
         boxes, scores = [], []
         if len(results) > 0 and len(results[0].boxes) > 0:
             for b in results[0].boxes:
+                # Class validation: strictly COCO class 32 (sports ball) for standard models
+                if hasattr(b, 'cls') and len(b.cls) > 0:
+                    cls_id = int(b.cls[0].cpu().numpy())
+                    if target_classes is not None and cls_id not in target_classes:
+                        continue
+
                 xyxy = b.xyxy[0].cpu().numpy().astype(int)
                 conf = float(b.conf[0].cpu().numpy())
-                boxes.append((int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])))
+                
+                # Aspect Ratio Filter: balls have roughly square bounding boxes (0.55 <= w/h <= 1.8)
+                x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
+                w, h = x2 - x1, y2 - y1
+                if w <= 4 or h <= 4:
+                    continue
+                aspect = w / float(h)
+                if aspect < 0.55 or aspect > 1.8:
+                    continue
+
+                boxes.append((x1, y1, x2, y2))
                 scores.append(conf)
 
         return boxes, scores

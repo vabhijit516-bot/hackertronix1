@@ -128,15 +128,49 @@ class UnifiedVisionPipeline:
             processed_frame: BGR frame with visual overlays.
             telemetry: Dict containing counts, detection states, and 3D position metrics.
         """
-        # 1. Process Task 1: Ball Detection & Tracking
+        # 1. Process Task 2: Monocular Face Distance & Angle Estimation FIRST
+        face_results = self.face_estimator.process_frame(frame)
+        face_bboxes = [f['bbox'] for f in face_results]
+        tracked_faces = self.face_tracker.update(face_bboxes)
+        
+        # Merge tracking IDs into face results
+        face_results_tracked = []
+        for bbox, face_id in tracked_faces:
+            for face in face_results:
+                if face['bbox'] == bbox:
+                    face['track_id'] = face_id
+                    face_results_tracked.append(face)
+                    break
+
+        # Helper: check if a candidate ball box overlaps with a face/head/neck region
+        def is_on_face(b_box, f_boxes):
+            bx1, by1, bx2, by2 = b_box
+            bcx, bcy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
+            for fx1, fy1, fx2, fy2 in f_boxes:
+                fw, fh = fx2 - fx1, fy2 - fy1
+                ex_fx1, ex_fy1 = fx1 - 0.2 * fw, fy1 - 0.2 * fh
+                ex_fx2, ex_fy2 = fx2 + 0.2 * fw, fy2 + 1.2 * fh  # Expand 1.2x height downwards (head, chin, neck)
+                if ex_fx1 <= bcx <= ex_fx2 and ex_fy1 <= bcy <= ex_fy2:
+                    return True
+            return False
+
+        # 2. Process Task 1: Ball Detection & Tracking (with Face Overlap Suppression)
         cached_boxes, cached_scores, cached_ids = [], [], []
         
         if self.frame_count % self.t1_cfg.detect_interval == 0:
-            boxes, scores = self.ball_detector.detect(frame)
+            raw_boxes, raw_scores = self.ball_detector.detect(frame)
+            # Filter out any candidate ball box that lands on a face/head/neck region
+            boxes, scores = [], []
+            for b, s in zip(raw_boxes, raw_scores):
+                if not is_on_face(b, face_bboxes):
+                    boxes.append(b)
+                    scores.append(s)
+
             if self.t1_cfg.enable_tracking:
                 tracked_results = self.ball_tracker.update(boxes)
-                cached_boxes = [b for b, trk_id in tracked_results]
-                cached_ids = [trk_id for b, trk_id in tracked_results]
+                valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
+                cached_boxes = [b for b, trk_id in valid_tracked]
+                cached_ids = [trk_id for b, trk_id in valid_tracked]
                 cached_scores = scores if len(scores) == len(cached_boxes) else [0.9] * len(cached_boxes)
             else:
                 cached_boxes, cached_scores = boxes, scores
@@ -144,8 +178,9 @@ class UnifiedVisionPipeline:
         else:
             if self.t1_cfg.enable_tracking and len(self.ball_tracker.trackers) > 0:
                 tracked_results = self.ball_tracker.step_interframe()
-                cached_boxes = [b for b, trk_id in tracked_results]
-                cached_ids = [trk_id for b, trk_id in tracked_results]
+                valid_tracked = [(b, trk_id) for b, trk_id in tracked_results if not is_on_face(b, face_bboxes)]
+                cached_boxes = [b for b, trk_id in valid_tracked]
+                cached_ids = [trk_id for b, trk_id in valid_tracked]
                 cached_scores = [0.85] * len(cached_boxes)
 
         # Draw ball detections if present
@@ -155,23 +190,6 @@ class UnifiedVisionPipeline:
                 is_tracked=(self.frame_count % self.t1_cfg.detect_interval != 0)
             )
 
-        # 2. Process Task 2: Monocular Face Distance & Angle Estimation
-        face_results = self.face_estimator.process_frame(frame)
-        
-        # Extract face bboxes and apply tracking
-        face_bboxes = [f['bbox'] for f in face_results]
-        tracked_faces = self.face_tracker.update(face_bboxes)
-        
-        # Merge tracking IDs into face results
-        face_results_tracked = []
-        for bbox, face_id in tracked_faces:
-            # Find corresponding face result
-            for face in face_results:
-                if face['bbox'] == bbox:
-                    face['track_id'] = face_id
-                    face_results_tracked.append(face)
-                    break
-        
         # Draw face 3D depth & angle metrics if present
         for face in face_results_tracked:
             frame = draw_face_metrics(

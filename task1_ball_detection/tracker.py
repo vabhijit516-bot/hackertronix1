@@ -161,13 +161,13 @@ class BallTracker:
                 self.trackers[self.next_id] = SingleBallKalmanTracker(det_box)
                 self.next_id += 1
 
-        # Purge stale trackers exceeding max_age or unconfirmed 1-hit noise
+        # Purge stale trackers exceeding max_age or unconfirmed noise (<3 hits)
         for trk_id in list(self.trackers.keys()):
             trk = self.trackers[trk_id]
             if trk.time_since_update > self.max_age:
                 del self.trackers[trk_id]
-            elif trk.hits < 2 and trk.time_since_update > 0:
-                # Instantly purge unconfirmed 1-hit noise detections
+            elif trk.hits < 3 and trk.time_since_update > 0:
+                # Instantly purge unconfirmed noise detections that were not detected consistently
                 del self.trackers[trk_id]
 
         # Track Deduplication (Track NMS): prune overlapping redundant trackers
@@ -185,10 +185,10 @@ class BallTracker:
                         else:
                             del self.trackers[id1]
                 
-        # Output active bounding boxes and IDs (only confirmed tracks with hits >= 2 or freshly updated)
+        # Output active bounding boxes and IDs (only confirmed tracks with hits >= 3)
         active_results = []
         for trk_id, trk in self.trackers.items():
-            if trk.hits >= 2:
+            if trk.hits >= 3:
                 active_results.append((trk.get_state(), trk_id))
                 
         return active_results
@@ -202,12 +202,12 @@ class BallTracker:
             trk.predict()
             if trk.time_since_update > self.max_age:
                 del self.trackers[trk_id]
-            elif trk.hits < 2 and trk.time_since_update > 0:
+            elif trk.hits < 3 and trk.time_since_update > 0:
                 del self.trackers[trk_id]
                 
         active_results = []
         for trk_id, trk in self.trackers.items():
-            if trk.hits >= 2 and trk.time_since_update <= 4:
+            if trk.hits >= 3 and trk.time_since_update <= 3:
                 active_results.append((trk.get_state(), trk_id))
                 
         return active_results
