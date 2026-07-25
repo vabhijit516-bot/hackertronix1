@@ -54,6 +54,8 @@ class BallDetector:
             except Exception as e:
                 print(f"[Detector Warning] ONNX load failed: {e}. Falling back to PyTorch/YOLO.")
                 self.use_onnx = False
+        else:
+            self.use_onnx = False
 
         # If ONNX not active, load Ultralytics PyTorch model
         if not self.use_onnx and HAS_ULTRALYTICS:
@@ -170,7 +172,7 @@ class FastHoughBallDetector:
         dp: float = 1.2,
         min_dist: float = 40,
         param1: float = 50,
-        param2: float = 28,
+        param2: float = 45,
         min_radius: int = 8,
         max_radius: int = 120
     ):
