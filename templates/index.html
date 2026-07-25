@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Computer Vision System - Live Telemetry</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Professional Top Bar Header -->
+        <header class="topbar">
+            <div class="brand">
+                <div class="logo-emblem">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>AUTONOMOUS CV SYSTEM</h1>
+                    <span class="sub-text">Monocular 2D Ball Tracking & 3D Face Distance Estimation</span>
+                </div>
+            </div>
+
+            <div class="header-status">
+                <div class="status-badge live-pulse">
+                    <span class="pulse-ring"></span>
+                    <span class="dot"></span>
+                    <span class="status-title">ACTIVE INFERENCE ENGINE</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="main-layout">
+            <div class="grid-2col">
+                <!-- Left Column: Video Stream & Telemetry Stats -->
+                <div class="card video-card">
+                    <div class="card-header">
+                        <div class="header-left">
+                            <span class="section-icon">📹</span>
+                            <h2>Live Optical Stream</h2>
+                        </div>
+                        <div class="badge-group">
+                            <span class="engine-badge cyan" id="engine-tag">YOLOv8 ONNX</span>
+                            <span class="engine-badge green">AUTO-DETECT</span>
+                        </div>
+                    </div>
+
+                    <!-- Video Feed Container -->
+                    <div class="video-wrapper">
+                        <img src="/video_feed/unified" alt="Unified Vision Stream" class="video-feed" id="stream-unified">
+                    </div>
+
+                    <!-- Live Telemetry Badges Bar -->
+                    <div class="telemetry-bar">
+                        <div class="telem-item">
+                            <span class="telem-label">SYSTEM FPS</span>
+                            <span class="telem-value green-glow" id="fps-val">0.0</span>
+                        </div>
+                        <div class="telem-item">
+                            <span class="telem-label">BALLS TRACKED</span>
+                            <span class="telem-value cyan-glow" id="balls-count">0</span>
+                        </div>
+                        <div class="telem-item">
+                            <span class="telem-label">FACE DEPTH Z</span>
+                            <span class="telem-value green-glow" id="face-z">0.00 m</span>
+                        </div>
+                        <div class="telem-item">
+                            <span class="telem-label">HORIZONTAL ANGLE &theta;</span>
+                            <span class="telem-value orange-glow" id="face-angle">0.0&deg;</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Controls & Configuration Panel -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <div class="header-left">
+                            <span class="section-icon">⚙️</span>
+                            <h2>Pipeline Configuration</h2>
+                        </div>
+                    </div>
+
+                    <!-- Section 1: Detector Architecture -->
+                    <div class="control-section">
+                        <div class="section-title-row">
+                            <span class="chip-number">01</span>
+                            <h3>Ball Detector Architecture</h3>
+                        </div>
+                        
+                        <div class="control-group">
+                            <label for="engine-select">Inference Engine Mode</label>
+                            <select id="engine-select" class="custom-select">
+                                <option value="yolo" selected>YOLOv8/v11 Nano ONNX Engine (Recommended)</option>
+                                <option value="hough">HSV + Hough Circles (CPU Ultra Fast)</option>
+                            </select>
+                        </div>
+
+                        <div class="control-group">
+                            <div class="label-row">
+                                <label for="conf-slider">Confidence Threshold (F1 Max)</label>
+                                <span id="conf-val" class="value-badge">0.45</span>
+                            </div>
+                            <input type="range" id="conf-slider" min="0.05" max="0.95" step="0.05" value="0.45" class="slider">
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Pinhole Distance Parameters -->
+                    <div class="control-section">
+                        <div class="section-title-row">
+                            <span class="chip-number">02</span>
+                            <h3>3D Pinhole Distance & Filter</h3>
+                        </div>
+
+                        <div class="control-group">
+                            <div class="label-row">
+                                <label for="focal-slider">Calibrated Focal Length ($f$)</label>
+                                <span id="focal-val" class="value-badge">850 px</span>
+                            </div>
+                            <input type="range" id="focal-slider" min="300" max="1800" step="10" value="850" class="slider">
+                        </div>
+
+                        <div class="control-group">
+                            <label for="filter-select">Temporal Smoothing Filter</label>
+                            <select id="filter-select" class="custom-select">
+                                <option value="kalman" selected>1D Kalman Filter (Best Stability)</option>
+                                <option value="ema">Exponential Moving Average (EMA)</option>
+                                <option value="none">None (Raw Measurement)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Reference Object Calibration -->
+                    <div class="nested-card">
+                        <div class="card-subtitle">
+                            <span class="icon">📐</span>
+                            <h4>Reference Object Focal Solver</h4>
+                        </div>
+                        <div class="input-grid">
+                            <div>
+                                <label>Pixel Width ($w_{px}$)</label>
+                                <input type="number" id="calib-w-px" value="250" class="num-input">
+                            </div>
+                            <div>
+                                <label>Distance ($Z_{ref}$ in meters)</label>
+                                <input type="number" id="calib-z-m" value="0.5" step="0.05" class="num-input">
+                            </div>
+                        </div>
+                        <button id="btn-calibrate" class="action-btn">
+                            <span>Execute Calibration</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MathJax formula rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
