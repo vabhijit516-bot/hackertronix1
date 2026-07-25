@@ -227,10 +227,21 @@ class FastHoughBallDetector:
         if circles is not None:
             circles = np.round(circles[0, :]).astype(int)
             for (x, y, r) in circles:
+                if r <= 0:
+                    continue
+                # Calculate mask fill ratio inside circular region
+                roi_y1, roi_y2 = max(0, y - r), min(frame.shape[0], y + r)
+                roi_x1, roi_x2 = max(0, x - r), min(frame.shape[1], x + r)
+                crop_mask = mask[roi_y1:roi_y2, roi_x1:roi_x2]
+                if crop_mask.size == 0:
+                    continue
+                fill_ratio = np.count_nonzero(crop_mask) / float(crop_mask.size)
+                # Only accept solid circular objects with high color fill ratio (>= 0.55)
+                if fill_ratio < 0.55:
+                    continue
                 x1, y1 = max(0, x - r), max(0, y - r)
                 x2, y2 = min(frame.shape[1], x + r), min(frame.shape[0], y + r)
                 boxes.append((x1, y1, x2, y2))
-                # Heuristic score based on circularity mask overlap
-                scores.append(0.85)
+                scores.append(round(min(0.99, float(fill_ratio)), 2))
 
         return boxes, scores

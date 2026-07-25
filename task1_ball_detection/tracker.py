@@ -185,6 +185,10 @@ class BallTracker:
                         else:
                             del self.trackers[id1]
                 
+        # Reset track ID counter when no active trackers remain
+        if len(self.trackers) == 0:
+            self.next_id = 1
+
         # Output active bounding boxes and IDs (only confirmed tracks with hits >= 3)
         active_results = []
         for trk_id, trk in self.trackers.items():

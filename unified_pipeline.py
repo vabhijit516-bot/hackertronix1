@@ -142,14 +142,16 @@ class UnifiedVisionPipeline:
                     face_results_tracked.append(face)
                     break
 
-        # Helper: check if a candidate ball box overlaps with a face/head/neck region
+        # Helper: check if a candidate ball box overlaps with a person's head, face, neck, shoulders, or chest
         def is_on_face(b_box, f_boxes):
             bx1, by1, bx2, by2 = b_box
             bcx, bcy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
             for fx1, fy1, fx2, fy2 in f_boxes:
                 fw, fh = fx2 - fx1, fy2 - fy1
-                ex_fx1, ex_fy1 = fx1 - 0.2 * fw, fy1 - 0.2 * fh
-                ex_fx2, ex_fy2 = fx2 + 0.2 * fw, fy2 + 1.2 * fh  # Expand 1.2x height downwards (head, chin, neck)
+                ex_fx1 = fx1 - 1.2 * fw
+                ex_fy1 = fy1 - 0.4 * fh
+                ex_fx2 = fx2 + 1.2 * fw
+                ex_fy2 = fy2 + 3.0 * fh  # Expand 3.0x height downwards (neck, shoulders, chest)
                 if ex_fx1 <= bcx <= ex_fx2 and ex_fy1 <= bcy <= ex_fy2:
                     return True
             return False
