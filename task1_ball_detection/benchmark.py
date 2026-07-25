@@ -129,7 +129,8 @@ def run_benchmark(video_path: str = "synthetic_ball_bench.mp4", gt_boxes: Option
             else:
                 if use_tracker and tracker is not None:
                     # Update trackers via Kalman prediction
-                    cached_boxes = [trk.predict() for trk in tracker.trackers.values()]
+                    tracked = tracker.step_interframe()
+                    cached_boxes = [b for b, trk_id in tracked]
                     cached_scores = [0.85] * len(cached_boxes)
 
             all_pred_boxes.append(cached_boxes)

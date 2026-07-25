@@ -85,8 +85,9 @@ def main():
             else:
                 # Inter-frame tracking state
                 if cfg.enable_tracking and len(tracker.trackers) > 0:
-                    cached_boxes = [trk.predict() for trk in tracker.trackers.values()]
-                    cached_track_ids = list(tracker.trackers.keys())
+                    tracked_results = tracker.step_interframe()
+                    cached_boxes = [b for b, trk_id in tracked_results]
+                    cached_track_ids = [trk_id for b, trk_id in tracked_results]
                     cached_scores = [0.85] * len(cached_boxes)
 
             # Draw output visualizations

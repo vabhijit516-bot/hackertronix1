@@ -13,8 +13,8 @@ class SingleBallKalmanTracker:
     """
     def __init__(self, bbox: Tuple[int, int, int, int]):
         x1, y1, x2, y2 = bbox
-        w, h = x2 - x1, y2 - y1
-        cx, cy = x1 + w / 2.0, y1 + h / 2.0
+        w, h = max(1.0, float(x2 - x1)), max(1.0, float(y2 - y1))
+        cx, cy = float(x1 + w / 2.0), float(y1 + h / 2.0)
         
         # State vector [cx, cy, dx, dy, w, h]
         self.kf = cv2.KalmanFilter(6, 4)
@@ -47,23 +47,25 @@ class SingleBallKalmanTracker:
 
         # Initial state
         self.kf.statePost = np.array([[cx], [cy], [0.0], [0.0], [w], [h]], dtype=np.float32)
+        self.current_bbox = bbox
         self.time_since_update = 0
         self.hits = 1
+        self.hit_streak = 1
 
     def predict(self) -> Tuple[int, int, int, int]:
         """Advance state prediction step."""
         prediction = self.kf.predict()
         cx, cy = float(prediction[0, 0]), float(prediction[1, 0])
-        w, h = float(prediction[4, 0]), float(prediction[5, 0])
+        w, h = max(1.0, float(prediction[4, 0])), max(1.0, float(prediction[5, 0]))
 
-        
         x1 = int(cx - w / 2.0)
         y1 = int(cy - h / 2.0)
         x2 = int(cx + w / 2.0)
         y2 = int(cy + h / 2.0)
         
+        self.current_bbox = (x1, y1, x2, y2)
         self.time_since_update += 1
-        return (x1, y1, x2, y2)
+        return self.current_bbox
 
     def update(self, bbox: Tuple[int, int, int, int]):
         """Correction step with new ground-truth detector measurement."""
@@ -73,8 +75,14 @@ class SingleBallKalmanTracker:
         
         measurement = np.array([[cx], [cy], [w], [h]], dtype=np.float32)
         self.kf.correct(measurement)
+        self.current_bbox = bbox
         self.time_since_update = 0
         self.hits += 1
+        self.hit_streak += 1
+
+    def get_state(self) -> Tuple[int, int, int, int]:
+        """Return current estimated bounding box without advancing prediction state."""
+        return self.current_bbox
 
 
 def compute_iou(boxA: Tuple[int, int, int, int], boxB: Tuple[int, int, int, int]) -> float:
@@ -85,8 +93,8 @@ def compute_iou(boxA: Tuple[int, int, int, int], boxB: Tuple[int, int, int, int]
     yB = min(boxA[3], boxB[3])
     
     interArea = max(0, xB - xA) * max(0, yB - yA)
-    boxAArea = max(0, boxA[2] - boxA[0]) * max(0, boxA[3] - boxA[0])
-    boxBArea = max(0, boxB[2] - boxB[0]) * max(0, boxB[3] - boxB[0])
+    boxAArea = max(0, boxA[2] - boxA[0]) * max(0, boxA[3] - boxA[1])
+    boxBArea = max(0, boxB[2] - boxB[0]) * max(0, boxB[3] - boxB[1])
     
     iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
     return iou
@@ -97,7 +105,7 @@ class BallTracker:
     Multi-object tracker for ball trajectories using IoU association and Kalman Filters.
     Enables detector-skipping frame strategies for maximized FPS.
     """
-    def __init__(self, max_age: int = 15, iou_thresh: float = 0.3):
+    def __init__(self, max_age: int = 30, iou_thresh: float = 0.3):
         self.max_age = max_age
         self.iou_thresh = iou_thresh
         self.trackers: Dict[int, SingleBallKalmanTracker] = {}
@@ -108,7 +116,7 @@ class BallTracker:
         Update tracker state with new detection frame.
         Returns list of ((x1, y1, x2, y2), track_id).
         """
-        # Predict all active trackers
+        # Predict all active trackers (ONCE per frame)
         predicted_boxes = {}
         for trk_id, trk in list(self.trackers.items()):
             predicted_boxes[trk_id] = trk.predict()
@@ -144,20 +152,56 @@ class BallTracker:
         for det_idx, trk_id in matches:
             self.trackers[trk_id].update(detected_boxes[det_idx])
             
-        # Create new trackers for unmatched detections
+        # Create new trackers for unmatched detections (avoid ID spam and duplicate tracks)
         for det_idx in unmatched_detections:
-            self.trackers[self.next_id] = SingleBallKalmanTracker(detected_boxes[det_idx])
-            self.next_id += 1
-            
+            det_box = detected_boxes[det_idx]
+            # Check if detection overlaps heavily with any existing active tracker
+            has_overlap = any(compute_iou(det_box, trk.get_state()) > 0.4 for trk in self.trackers.values())
+            if not has_overlap and len(self.trackers) < 5:
+                self.trackers[self.next_id] = SingleBallKalmanTracker(det_box)
+                self.next_id += 1
+
         # Purge stale trackers exceeding max_age
         for trk_id in list(self.trackers.keys()):
             if self.trackers[trk_id].time_since_update > self.max_age:
                 del self.trackers[trk_id]
+
+        # Track Deduplication (Track NMS): prune overlapping redundant trackers
+        active_ids = list(self.trackers.keys())
+        for i in range(len(active_ids)):
+            for j in range(i + 1, len(active_ids)):
+                id1, id2 = active_ids[i], active_ids[j]
+                if id1 in self.trackers and id2 in self.trackers:
+                    box1 = self.trackers[id1].get_state()
+                    box2 = self.trackers[id2].get_state()
+                    if compute_iou(box1, box2) > 0.4:
+                        t1, t2 = self.trackers[id1], self.trackers[id2]
+                        if t1.hits >= t2.hits:
+                            del self.trackers[id2]
+                        else:
+                            del self.trackers[id1]
                 
         # Output active bounding boxes and IDs
         active_results = []
         for trk_id, trk in self.trackers.items():
             if trk.time_since_update == 0 or trk.hits >= 2:
-                active_results.append((trk.predict(), trk_id))
+                active_results.append((trk.get_state(), trk_id))
+                
+        return active_results
+
+    def step_interframe(self) -> List[Tuple[Tuple[int, int, int, int], int]]:
+        """
+        Inter-frame prediction step when detector is skipped.
+        Advances Kalman state once and returns active valid tracks.
+        """
+        for trk_id, trk in list(self.trackers.items()):
+            trk.predict()
+            if trk.time_since_update > self.max_age:
+                del self.trackers[trk_id]
+                
+        active_results = []
+        for trk_id, trk in self.trackers.items():
+            if trk.time_since_update <= 3 or trk.hits >= 2:
+                active_results.append((trk.get_state(), trk_id))
                 
         return active_results

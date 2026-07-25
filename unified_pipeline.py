@@ -22,6 +22,75 @@ from task2_face_distance.estimator import MonocularFaceEstimator
 from utils.visualization import draw_ball_detection, draw_face_metrics, draw_fps_hud
 
 
+class SimpleFaceTracker:
+    """Minimal face tracker to maintain stable face IDs across frames using IoU matching."""
+    def __init__(self, max_age: int = 60):
+        self.max_age = max_age
+        self.trackers = {}  # {face_id: {'bbox': bbox, 'age': age}}
+        self.next_id = 1
+
+    def update(self, face_bboxes):
+        """Associate detected faces with existing tracks. Returns list of (face_data, track_id)."""
+        if not face_bboxes:
+            # Age out all trackers
+            self.trackers = {fid: t for fid, t in self.trackers.items() if t['age'] < self.max_age}
+            for fid in list(self.trackers.keys()):
+                self.trackers[fid]['age'] += 1
+            return []
+
+        # Compute IoU matrix
+        def iou(box1, box2):
+            x1_min, y1_min, x1_max, y1_max = box1['bbox']
+            x2_min, y2_min, x2_max, y2_max = box2
+            xi_min = max(x1_min, x2_min)
+            yi_min = max(y1_min, y2_min)
+            xi_max = min(x1_max, x2_max)
+            yi_max = min(y1_max, y2_max)
+            inter = max(0, xi_max - xi_min) * max(0, yi_max - yi_min)
+            box1_area = (x1_max - x1_min) * (y1_max - y1_min)
+            box2_area = (x2_max - x2_min) * (y2_max - y2_min)
+            union = box1_area + box2_area - inter
+            return inter / union if union > 0 else 0
+
+        matched = set()
+        used_detections = set()
+        result = []
+
+        # Match detections to existing trackers
+        for face_id, tracker_data in list(self.trackers.items()):
+            best_iou = 0.3
+            best_det_idx = -1
+            for det_idx, det_bbox in enumerate(face_bboxes):
+                if det_idx in used_detections:
+                    continue
+                iou_val = iou(tracker_data, det_bbox)
+                if iou_val > best_iou:
+                    best_iou = iou_val
+                    best_det_idx = det_idx
+
+            if best_det_idx >= 0:
+                matched.add(face_id)
+                used_detections.add(best_det_idx)
+                self.trackers[face_id]['bbox'] = face_bboxes[best_det_idx]
+                self.trackers[face_id]['age'] = 0
+                result.append((face_bboxes[best_det_idx], face_id))
+
+        # Create new trackers for unmatched detections
+        for det_idx, det_bbox in enumerate(face_bboxes):
+            if det_idx not in used_detections:
+                self.trackers[self.next_id] = {'bbox': det_bbox, 'age': 0}
+                result.append((det_bbox, self.next_id))
+                self.next_id += 1
+
+        # Age out old trackers
+        self.trackers = {fid: t for fid, t in self.trackers.items() if t['age'] < self.max_age}
+        for fid in list(self.trackers.keys()):
+            if fid not in matched:
+                self.trackers[fid]['age'] += 1
+
+        return result
+
+
 class UnifiedVisionPipeline:
     """
     Unified real-time multi-task engine that automatically detects and tracks balls
@@ -47,6 +116,7 @@ class UnifiedVisionPipeline:
             use_landmarks=self.t2_cfg.use_landmarks,
             filter_type=self.t2_cfg.filter_type
         )
+        self.face_tracker = SimpleFaceTracker(max_age=60)
 
         self.frame_count = 0
 
@@ -73,8 +143,9 @@ class UnifiedVisionPipeline:
                 cached_ids = []
         else:
             if self.t1_cfg.enable_tracking and len(self.ball_tracker.trackers) > 0:
-                cached_boxes = [trk.predict() for trk in self.ball_tracker.trackers.values()]
-                cached_ids = list(self.ball_tracker.trackers.keys())
+                tracked_results = self.ball_tracker.step_interframe()
+                cached_boxes = [b for b, trk_id in tracked_results]
+                cached_ids = [trk_id for b, trk_id in tracked_results]
                 cached_scores = [0.85] * len(cached_boxes)
 
         # Draw ball detections if present
@@ -87,8 +158,22 @@ class UnifiedVisionPipeline:
         # 2. Process Task 2: Monocular Face Distance & Angle Estimation
         face_results = self.face_estimator.process_frame(frame)
         
+        # Extract face bboxes and apply tracking
+        face_bboxes = [f['bbox'] for f in face_results]
+        tracked_faces = self.face_tracker.update(face_bboxes)
+        
+        # Merge tracking IDs into face results
+        face_results_tracked = []
+        for bbox, face_id in tracked_faces:
+            # Find corresponding face result
+            for face in face_results:
+                if face['bbox'] == bbox:
+                    face['track_id'] = face_id
+                    face_results_tracked.append(face)
+                    break
+        
         # Draw face 3D depth & angle metrics if present
-        for face in face_results:
+        for face in face_results_tracked:
             frame = draw_face_metrics(
                 frame, bbox=face['bbox'], distance_m=face['distance_m'],
                 angle_deg=face['angle_deg'], landmarks=face['landmarks']
@@ -96,16 +181,16 @@ class UnifiedVisionPipeline:
 
         # 3. Compile Combined Telemetry
         ball_detected = len(cached_boxes) > 0
-        face_detected = len(face_results) > 0
+        face_detected = len(face_results_tracked) > 0
 
-        last_z = round(face_results[0]['distance_m'], 2) if face_detected else 0.0
-        last_angle = round(face_results[0]['angle_deg'], 1) if face_detected else 0.0
+        last_z = round(face_results_tracked[0]['distance_m'], 2) if face_detected else 0.0
+        last_angle = round(face_results_tracked[0]['angle_deg'], 1) if face_detected else 0.0
 
         telemetry = {
             "ball_detected": ball_detected,
             "balls_count": len(cached_boxes),
             "face_detected": face_detected,
-            "faces_count": len(face_results),
+            "faces_count": len(face_results_tracked),
             "last_z": last_z,
             "last_angle": last_angle,
             "engine": self.ball_detector.engine_type,

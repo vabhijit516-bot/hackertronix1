@@ -50,8 +50,8 @@ class MonocularFaceEstimator:
                     model=YUNET_PATH,
                     config="",
                     input_size=(640, 480),
-                    score_threshold=0.35,
-                    nms_threshold=0.3,
+                    score_threshold=0.55,
+                    nms_threshold=0.5,
                     top_k=5000
                 )
                 print(f"[Estimator] Loaded OpenCV YuNet Neural Face Detector: {YUNET_PATH}")
@@ -123,7 +123,7 @@ class MonocularFaceEstimator:
         if len(results_list) == 0 and self.haar_cascade is not None:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = self.haar_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30)
+                gray, scaleFactor=1.05, minNeighbors=7, minSize=(60, 60)
             )
 
             for (x, y, w, h) in faces:

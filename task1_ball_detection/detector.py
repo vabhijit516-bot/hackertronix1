@@ -58,10 +58,12 @@ class BallDetector:
         # If ONNX not active, load Ultralytics PyTorch model
         if not self.use_onnx and HAS_ULTRALYTICS:
             try:
-                # Target class 32 in COCO is sports ball
-                self.yolo_model = YOLO(model_path if os.path.exists(model_path) else "yolov8n.pt")
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                pt_path = os.path.join(base_dir, "yolov8n.pt")
+                target_path = model_path if os.path.exists(model_path) else (pt_path if os.path.exists(pt_path) else "yolov8n.pt")
+                self.yolo_model = YOLO(target_path)
                 self.engine_type = "PyTorch YOLOv8"
-                print(f"[Detector] Loaded Ultralytics model: {self.yolo_model.model_name}")
+                print(f"[Detector] Loaded Ultralytics model: {target_path}")
             except Exception as e:
                 print(f"[Detector Warning] Ultralytics load failed: {e}")
 
@@ -87,25 +89,18 @@ class BallDetector:
 
     def _detect_yolo(self, frame: np.ndarray) -> Tuple[List[Tuple[int, int, int, int]], List[float]]:
         """Inference via Ultralytics YOLO API."""
+        target_classes = [32] if (hasattr(self.yolo_model, 'names') and isinstance(self.yolo_model.names, dict) and len(self.yolo_model.names) > 32) else None
         results = self.yolo_model.predict(
             frame,
             conf=self.conf_thresh,
             iou=self.iou_thresh,
             imgsz=self.img_size,
             verbose=False,
-            classes=[32]  # COCO class 32 = sports ball (or class 0 if custom 1-class trained)
+            classes=target_classes
         )
         
         boxes, scores = [], []
         if len(results) > 0 and len(results[0].boxes) > 0:
-            for b in results[0].boxes:
-                xyxy = b.xyxy[0].cpu().numpy().astype(int)
-                conf = float(b.conf[0].cpu().numpy())
-                boxes.append((int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])))
-                scores.append(conf)
-                
-        # If no sports ball found with class filtering, check all classes if custom trained
-        if len(boxes) == 0 and len(results[0].boxes) > 0:
             for b in results[0].boxes:
                 xyxy = b.xyxy[0].cpu().numpy().astype(int)
                 conf = float(b.conf[0].cpu().numpy())
