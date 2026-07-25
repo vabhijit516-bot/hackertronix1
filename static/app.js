@@ -78,6 +78,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('balls-count').textContent = data.balls_count || 0;
                 document.getElementById('face-z').textContent = `${data.last_z || 0.00} m`;
                 document.getElementById('face-angle').textContent = `${data.last_angle || 0.0}°`;
+                if (data.engine && engineTag) {
+                    engineTag.textContent = data.engine;
+                }
             })
             .catch(err => console.error('Telemetry error:', err));
     }
