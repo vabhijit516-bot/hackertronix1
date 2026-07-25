@@ -91,31 +91,36 @@ class ThreadedVideoStream:
         self.grabbed = False
         self.frame = None
         self.using_synthetic = False
+        self.last_reconnect_attempt = time.time()
 
-        # Attempt opening physical camera
+        self._open_hardware_or_synthetic()
+
+    def _open_hardware_or_synthetic(self):
+        """Attempt to open physical hardware camera, or set up synthetic fallback."""
         self.stream = None
-        if isinstance(src, int) or (isinstance(src, str) and src.isdigit()):
-            cam_idx = int(src)
-            # Try DirectShow on Windows first for reliability
+        self.grabbed = False
+        self.frame = None
+        self.using_synthetic = False
+
+        if isinstance(self.src, int) or (isinstance(self.src, str) and str(self.src).isdigit()):
+            cam_idx = int(self.src)
             if sys.platform.startswith("win"):
                 self.stream = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
             if self.stream is None or not self.stream.isOpened():
                 self.stream = cv2.VideoCapture(cam_idx)
         else:
-            self.stream = cv2.VideoCapture(src)
+            self.stream = cv2.VideoCapture(self.src)
 
-        # Check if hardware camera grabbed frames successfully
         if self.stream is not None and self.stream.isOpened():
-            # Test grab frame
-            for _ in range(5):
+            for _ in range(10):
                 self.grabbed, self.frame = self.stream.read()
                 if self.grabbed and self.frame is not None:
+                    print(f"[VideoStream] Physical webcam initialized successfully (resolution: {self.frame.shape[1]}x{self.frame.shape[0]}).")
                     break
                 time.sleep(0.05)
 
-        # Fallback to synthetic demo video if camera unreadable
         if not self.grabbed or self.frame is None:
-            print("[VideoStream Warning] Hardware webcam unreadable or locked by OS. Switching to Synthetic Demo Loop.")
+            print("[VideoStream Warning] Physical webcam unavailable or locked. Falling back to Synthetic Demo Video.")
             self.using_synthetic = True
             synthetic_path = create_synthetic_demo_video()
             if self.stream is not None:
@@ -130,14 +135,36 @@ class ThreadedVideoStream:
         return self
 
     def update(self):
-        """Continuously grab frames from stream."""
+        """Continuously grab frames from stream with automatic hardware camera reconnect."""
         while not self.stopped:
+            # If using synthetic fallback, periodically try reconnecting to physical webcam
+            if self.using_synthetic and (time.time() - self.last_reconnect_attempt > 4.0):
+                self.last_reconnect_attempt = time.time()
+                try:
+                    cam_idx = int(self.src) if (isinstance(self.src, int) or (isinstance(self.src, str) and str(self.src).isdigit())) else 0
+                    test_cam = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW) if sys.platform.startswith("win") else cv2.VideoCapture(cam_idx)
+                    if test_cam.isOpened():
+                        ret, test_frame = test_cam.read()
+                        if ret and test_frame is not None:
+                            print("[VideoStream] Physical webcam re-connected! Switching back to live hardware camera stream.")
+                            with self.lock:
+                                if self.stream is not None:
+                                    self.stream.release()
+                                self.stream = test_cam
+                                self.using_synthetic = False
+                                self.grabbed = ret
+                                self.frame = test_frame
+                            continue
+                    test_cam.release()
+                except Exception:
+                    pass
+
             if self.stream is None or not self.stream.isOpened():
-                break
+                time.sleep(0.01)
+                continue
 
             grabbed, frame = self.stream.read()
 
-            # Loop synthetic video
             if not grabbed or frame is None:
                 if self.using_synthetic:
                     self.stream.set(cv2.CAP_PROP_POS_FRAMES, 0)
